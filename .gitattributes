@@ -1,0 +1,5 @@
+﻿* text=auto
+*.mq5 text eol=crlf
+*.mqh text eol=crlf
+*.ps1 text eol=crlf
+*.ex5 binary

@@ -1,0 +1,15 @@
+﻿# MetaEditor build outputs
+*.ex5
+*.ex4
+*.log
+
+# Strategy Tester / terminal artifacts
+*.set.bak
+tester/
+Tester/
+
+# OS / editor
+Thumbs.db
+desktop.ini
+.vs/
+.vscode/
