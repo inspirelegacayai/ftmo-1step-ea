@@ -122,15 +122,29 @@ struct RiskState
    int      entriesToday;
    bool     killSwitchActive;
    bool     floorGuardLatched;
+   double   lowestEquity;        // lowest equity seen this FTMO day
+};
+
+// One finished FTMO day, for the daily log (SPEC section 9)
+struct DaySummary
+{
+   bool     valid;
+   datetime ftmoDate;
+   double   startBalance;
+   double   endBalance;
+   double   lowestEquity;
+   int      entries;
+   bool     killSwitch;
 };
 
 class CRiskManager
 {
 private:
-   string    m_prefix;           // terminal global variable name prefix
-   double    m_initialBalance;
-   double    m_baseRiskPct;
-   RiskState m_state;
+   string     m_prefix;          // terminal global variable name prefix
+   double     m_initialBalance;
+   double     m_baseRiskPct;
+   RiskState  m_state;
+   DaySummary m_lastDay;         // filled when a day rolls over
 
    string Key(const string field) const { return m_prefix + field; }
 
@@ -142,6 +156,7 @@ public:
       m_initialBalance = initialBalance;
       m_baseRiskPct    = baseRiskPct;
       ZeroMemory(m_state);
+      ZeroMemory(m_lastDay);
       m_state.highestEodBalance = initialBalance;
    }
 
@@ -157,10 +172,12 @@ public:
       m_state.entriesToday      = (int)GlobalVariableGet(Key("entries"));
       m_state.killSwitchActive  = GlobalVariableGet(Key("kill")) != 0.0;
       m_state.floorGuardLatched = GlobalVariableGet(Key("guard")) != 0.0;
+      m_state.lowestEquity      = GlobalVariableGet(Key("lowEquity"));
       return true;
    }
 
-   bool Save() const
+   // flush=false skips the disk write, for frequent low-stakes updates (new equity lows)
+   bool Save(const bool flush = true) const
    {
       bool ok = true;
       ok &= GlobalVariableSet(Key("ftmoDate"),   (double)m_state.ftmoDate) > 0;
@@ -170,8 +187,10 @@ public:
       ok &= GlobalVariableSet(Key("entries"),    m_state.entriesToday) > 0;
       ok &= GlobalVariableSet(Key("kill"),       m_state.killSwitchActive ? 1.0 : 0.0) > 0;
       ok &= GlobalVariableSet(Key("guard"),      m_state.floorGuardLatched ? 1.0 : 0.0) > 0;
+      ok &= GlobalVariableSet(Key("lowEquity"),  m_state.lowestEquity) > 0;
       ok &= GlobalVariableSet(Key("saved"),      1.0) > 0;
-      GlobalVariablesFlush();
+      if(flush)
+         GlobalVariablesFlush();
       return ok;
    }
 
@@ -201,18 +220,25 @@ public:
       {
          m_state.ftmoDate          = today;
          m_state.startOfDayBalance = balance;
+         m_state.lowestEquity      = equity;
          events |= RISK_EVENT_NEW_DAY;
       }
       else if(today != m_state.ftmoDate)
       {
          // The balance now is the previous day's end-of-day balance
+         SummariseDay(m_lastDay, balance);
          m_state.highestEodBalance = MathMax(m_state.highestEodBalance, balance);
          m_state.startOfDayBalance = balance;
          m_state.entriesToday      = 0;
          m_state.killSwitchActive  = false;
          m_state.ftmoDate          = today;
+         m_state.lowestEquity      = equity;
          events |= RISK_EVENT_NEW_DAY;
       }
+
+      bool newLow = equity < m_state.lowestEquity;
+      if(newLow)
+         m_state.lowestEquity = equity;
 
       if(!m_state.killSwitchActive && equity <= KillSwitchEquity(m_state.startOfDayBalance, m_initialBalance))
       {
@@ -230,8 +256,25 @@ public:
 
       if(events != RISK_EVENT_NONE)
          Save();
+      else if(newLow)
+         Save(false);
       return events;
    }
+
+   // Summary of the FTMO day in progress, with balance as its end balance
+   void SummariseDay(DaySummary &out, const double balance) const
+   {
+      out.valid        = m_state.ftmoDate != 0;
+      out.ftmoDate     = m_state.ftmoDate;
+      out.startBalance = m_state.startOfDayBalance;
+      out.endBalance   = balance;
+      out.lowestEquity = m_state.lowestEquity;
+      out.entries      = m_state.entriesToday;
+      out.killSwitch   = m_state.killSwitchActive;
+   }
+
+   // The day that ended at the last RISK_EVENT_NEW_DAY (valid=false before any rollover)
+   void LastDaySummary(DaySummary &out) const { out = m_lastDay; }
 
    //--- Trade bookkeeping
    void OnEntryOpened()

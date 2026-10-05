@@ -125,6 +125,10 @@ void TestDailyFlow()
    rm.DeleteSaved();
    CheckTrue("no saved state after delete", !rm.Load());
 
+   DaySummary none;
+   rm.LastDaySummary(none);
+   CheckTrue("no day summary before any rollover", !none.valid);
+
    int ev = rm.OnTick(D'2026.07.15 10:00', 100000, 100000);
    CheckTrue("first tick starts a day", Has(ev, RISK_EVENT_NEW_DAY));
    CheckEntry("fresh day allows entry", rm.CheckNewEntry(0, 0), ENTRY_ALLOWED);
@@ -152,6 +156,17 @@ void TestDailyFlow()
    ev = rm.OnTick(D'2026.07.16 01:00', 98600, 98600);
    CheckTrue("01:00 server starts new FTMO day", Has(ev, RISK_EVENT_NEW_DAY));
    CheckTrue("kill switch cleared on new day", !rm.KillSwitchActive());
+
+   // The day that just ended: equities 100,000 / 98,501 / 98,500 / 98,600, two entries, kill switch
+   DaySummary ended;
+   rm.LastDaySummary(ended);
+   CheckTrue("day summary valid", ended.valid);
+   CheckTrue("day summary date", ended.ftmoDate == D'2026.07.15');
+   CheckNum("day summary start balance", ended.startBalance, 100000);
+   CheckNum("day summary end balance", ended.endBalance, 98600);
+   CheckNum("day summary lowest equity", ended.lowestEquity, 98500);
+   CheckTrue("day summary entries", ended.entries == 2);
+   CheckTrue("day summary kill switch", ended.killSwitch);
    CheckEntry("entries reset on new day", rm.CheckNewEntry(0, 0), ENTRY_ALLOWED);
    CheckNum("daily floor from 98,600", rm.DailyFloor(), 95600);
    CheckNum("highest EOD unchanged by a lower close", rm.TrailingFloor(), 90000);
@@ -186,6 +201,7 @@ void TestDailyFlow()
    CheckTrue("reload entries",    before.entriesToday == after.entriesToday);
    CheckTrue("reload kill switch", before.killSwitchActive == after.killSwitchActive);
    CheckTrue("reload floor guard", after.floorGuardLatched);
+   CheckNum("reload lowest equity", after.lowestEquity, before.lowestEquity);
 
    // Manual review clears the latch; it re-latches only if still inside the band
    rm2.ClearFloorGuardAfterReview();
