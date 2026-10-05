@@ -104,7 +104,9 @@ A second EA using the published Raschke/Connors Holy Grail entry, so we can tell
 
 ## 11. Backtest protocol
 
-- Strategy Tester, "Every tick based on real ticks," on the FTMO server, using as much history as FTMO provides (aim for 8 to 10 years, minimum 5).
+- Strategy Tester, "Every tick based on real ticks." The FTMO server (OANDA-Prop Trader) only provides history from April 2025, so:
+  - Long history: Dukascopy tick data (real bid/ask and spreads) from January 2016, imported into MT5 as custom symbols with timestamps converted to the FTMO server clock (New York time + 7h). Tools: tools/dukascopy_fetch.py and tools/ImportDukascopyTicks.mq5.
+  - Confirmation: once rules are frozen, the same runs on the FTMO server's own real ticks for the period it provides. All of that period is out-of-sample, so it is run only at step 8.
 - Commission per lot set to match the FTMO account specs.
 - In-sample: everything except the most recent 2 years. All rule tuning happens here only.
 - Out-of-sample: the most recent 2 years. Not opened until rules are frozen. Run once. If it fails, the strategy goes back to the drawing board, it doesn't get tuned on this data.

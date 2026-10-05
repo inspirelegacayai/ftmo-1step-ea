@@ -13,3 +13,6 @@ Thumbs.db
 desktop.ini
 .vs/
 .vscode/
+
+# Downloaded market data (tools/dukascopy_fetch.py)
+data/
