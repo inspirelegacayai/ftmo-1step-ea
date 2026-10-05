@@ -165,9 +165,11 @@ int OnInit()
    ProcessClosedTrades();   // catch up on trades that closed while the EA was off
 
    EventSetTimer(1);
-   Notify(StringFormat("started. Initial balance %.2f, risk %.2f%%, TP %d pips, state %s. Daily floor %.2f, trailing floor %.2f.",
+   // The daily floor isn't shown here: on a fresh start the FTMO day only begins on the
+   // first tick, so it would print a meaningless value. The "New FTMO day" line has it.
+   Notify(StringFormat("started. Initial balance %.2f, risk %.2f%%, TP %d pips, state %s. Trailing floor %.2f.",
                        initial, InpRiskPercent, InpTakeProfitPips, restored ? "restored" : "new",
-                       g_risk.DailyFloor(), g_risk.TrailingFloor()));
+                       g_risk.TrailingFloor()));
    return INIT_SUCCEEDED;
 }
 
