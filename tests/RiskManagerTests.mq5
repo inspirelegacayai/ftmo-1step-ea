@@ -215,6 +215,16 @@ void TestStreak()
    rm.DeleteSaved();
 }
 
+void TestHighestEodOverride()
+{
+   CRiskManager rm;
+   rm.Init(TEST_PREFIX, INITIAL, 0.5);
+   rm.RaiseHighestEodBalance(103000);
+   CheckNum("override raises trailing floor", rm.TrailingFloor(), 93000);
+   rm.RaiseHighestEodBalance(101000);
+   CheckNum("override never lowers it", rm.TrailingFloor(), 93000);
+}
+
 void TestMismatchDayBoundary()
 {
    CRiskManager rm;
@@ -237,6 +247,7 @@ void OnStart()
    TestEffectiveRisk();
    TestDailyFlow();
    TestStreak();
+   TestHighestEodOverride();
    TestMismatchDayBoundary();
    Out(StringFormat("RESULT: %d passed, %d failed", g_passed, g_failed));
    if(g_file != INVALID_HANDLE)

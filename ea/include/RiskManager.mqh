@@ -182,6 +182,15 @@ public:
    // again straight away if equity is still inside the block band.
    void ClearFloorGuardAfterReview() { m_state.floorGuardLatched = false; }
 
+   // For attaching mid-challenge: the highest end-of-day balance from the FTMO
+   // dashboard. Only ever raises the tracked value, so a stale input can't
+   // loosen the trailing floor.
+   void RaiseHighestEodBalance(const double value)
+   {
+      if(value > m_state.highestEodBalance)
+         m_state.highestEodBalance = value;
+   }
+
    //--- Call on every tick. Returns RISK_EVENT_* flags for the EA to act on.
    int OnTick(const datetime server, const double balance, const double equity)
    {
