@@ -95,6 +95,8 @@ Market order on the first tick of the new H1 bar, with stop loss and take profit
 
 ## 10. Benchmark EA (Holy Grail)
 
+> **Skipped (owner decision 2026-10-05).** Backtesting is skipped, and the benchmark only exists to compare against in backtests. Kept here for reference.
+
 A second EA using the published Raschke/Connors Holy Grail entry, so we can tell whether our rules beat a known setup:
 
 - H1, ADX(14) above 30 and rising.
@@ -104,9 +106,9 @@ A second EA using the published Raschke/Connors Holy Grail entry, so we can tell
 
 ## 11. Backtest protocol
 
-- Strategy Tester, "Every tick based on real ticks." The FTMO server (OANDA-Prop Trader) only provides history from April 2025, so:
-  - Long history: Dukascopy tick data (real bid/ask and spreads) from January 2016, imported into MT5 as custom symbols with timestamps converted to the FTMO server clock (New York time + 7h). Tools: tools/dukascopy_fetch.py and tools/ImportDukascopyTicks.mq5.
-  - Confirmation: once rules are frozen, the same runs on the FTMO server's own real ticks for the period it provides. All of that period is out-of-sample, so it is run only at step 8.
+> **Skipped (owner decision 2026-10-05).** The FTMO server only has history from April 2025, and getting long tick history elsewhere (Dukascopy) was rate-limited to days of downloading. The owner chose to go straight to the challenge at 0.25% risk instead. Consequence: the strategy goes live with no evidence that it is profitable, and none of the pass criteria below or the section 12 go-live bar are checked. The risk rules in section 6 still cap losses. The protocol below is kept for reference if backtesting is picked up later.
+
+- Strategy Tester, "Every tick based on real ticks," with as much history as can be obtained (aim for 8 to 10 years, minimum 5). The FTMO server (OANDA-Prop Trader) only provides history from April 2025, so long history needs an outside source imported as custom symbols on the FTMO server clock (New York time + 7h), with the FTMO server's own ticks as confirmation.
 - Commission per lot set to match the FTMO account specs.
 - In-sample: everything except the most recent 2 years. All rule tuning happens here only.
 - Out-of-sample: the most recent 2 years. Not opened until rules are frozen. Run once. If it fails, the strategy goes back to the drawing board, it doesn't get tuned on this data.
@@ -120,6 +122,8 @@ A second EA using the published Raschke/Connors Holy Grail entry, so we can tell
 - No single FTMO day worse than -1.5% (the kill switch should guarantee this, so a violation means a bug).
 
 ## 12. Monte Carlo (Python)
+
+> **Skipped (owner decision 2026-10-05)**, along with backtesting, which produced its input. It could be run later on the challenge's own daily log once there are enough days.
 
 Script: analysis/montecarlo.py. Reads the daily log.
 
@@ -152,11 +156,11 @@ CHANGELOG.md
 3. FtmoRules and RiskManager (sizing, kill switch, floor guard, streak brake, state persistence).
 4. Main EA signals and exits.
 5. Logger.
-6. Benchmark EA.
-7. In-sample backtests.
-8. Freeze rules, run out-of-sample.
-9. Monte Carlo.
-10. If it passes: challenge at 0.25% for two weeks, then 0.5%.
+6. ~~Benchmark EA.~~ Skipped.
+7. ~~In-sample backtests.~~ Skipped.
+8. ~~Freeze rules, run out-of-sample.~~ Skipped.
+9. ~~Monte Carlo.~~ Skipped.
+10. Challenge at 0.25% for two weeks, then 0.5%. (Was "If it passes"; steps 6 to 9 skipped by owner decision 2026-10-05.)
 
 ## 15. To verify before backtesting
 

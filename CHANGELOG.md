@@ -20,3 +20,11 @@ date, what changed, why, and the backtest that supports it.
   Why: the FTMO server only has history from 2025-04-07 (ServerTimeProbe, 2026-10-02), all of
   it inside the out-of-sample window; the owner's OANDA MT4 has only patchy H4 bars.
   Backtest: none; this is a data-source change made before any backtest.
+- 2026-10-05: Backtesting skipped (owner decision). Build steps 6 (benchmark EA), 7 (in-sample
+  backtests), 8 (out-of-sample) and 9 (Monte Carlo) dropped; SPEC sections 10-12 marked skipped
+  and kept for reference. Step 10 now goes straight to the challenge at 0.25% risk for two
+  weeks, then 0.5%. A forward demo check of order handling was offered and declined. The
+  2026-10-04 Dukascopy data-source entry is superseded; its download tools were removed.
+  Why: no long history on the FTMO server, and Dukascopy rate-limited the download to days.
+  Backtest: none. The strategy and order handling go live untested; the section 6 risk rules
+  (0.25% risk, 1.5% daily kill switch, floor guard) are the remaining protection.
