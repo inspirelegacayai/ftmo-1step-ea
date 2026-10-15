@@ -28,3 +28,10 @@ date, what changed, why, and the backtest that supports it.
   Why: no long history on the FTMO server, and Dukascopy rate-limited the download to days.
   Backtest: none. The strategy and order handling go live untested; the section 6 risk rules
   (0.25% risk, 1.5% daily kill switch, floor guard) are the remaining protection.
+- 2026-10-15: Diagnostic backtest approved, no rule change. The live EA took no trade in its
+  first 8 trading days (SignalDiagnostic: H4 trend present throughout, but the section 4
+  pullback never qualified). Owner waived the CLAUDE.md out-of-sample rule for an 18-month
+  Strategy Tester run on the FTMO server's own real ticks, comparing the spec rules with three
+  test-only variants: RSI 50/50 instead of 45/55; no "close beyond EMA50" check; both. The
+  variants are an input (InpRuleVariant) that defaults to the spec and is refused on live
+  accounts. Caveat: no untouched data remains to confirm whichever variant looks best.

@@ -144,6 +144,58 @@ void TestSignals()
    }
 }
 
+// Checks one setup under all four variants, long and mirrored short
+void CheckVariants(const string what, H4Trend &t, H1Bars &b,
+                   const bool spec, const bool rsi50, const bool noGuard, const bool both)
+{
+   ENUM_RULE_VARIANT v[] = {RULES_SPEC, RULES_RSI50, RULES_NO_EMA50_GUARD, RULES_BOTH};
+   bool want[4];
+   want[0] = spec; want[1] = rsi50; want[2] = noGuard; want[3] = both;
+   for(int i = 0; i < 4; i++)
+      Check(StringFormat("variant %s, %s: long %s", RuleVariantText(v[i]), what, want[i] ? "fires" : "blocked"),
+            (EvaluateSignal(t, b, v[i]) == SIGNAL_LONG) == want[i]);
+   Mirror(t, b);
+   for(int i = 0; i < 4; i++)
+      Check(StringFormat("variant %s, %s: short %s", RuleVariantText(v[i]), what, want[i] ? "fires" : "blocked"),
+            (EvaluateSignal(t, b, v[i]) == SIGNAL_SHORT) == want[i]);
+}
+
+void TestVariants()
+{
+   H4Trend t;
+   H1Bars b;
+   //                                         spec   rsi50  noguard both
+   BaseLong(t, b);
+   CheckVariants("base setup", t, b,          true,  true,  true,   true);
+
+   BaseLong(t, b);
+   b.rsi[2] = 45;   // lowest RSI exactly 45
+   CheckVariants("lowest RSI 45", t, b,        false, true,  false,  true);
+
+   BaseLong(t, b);
+   b.rsi[2] = 49.9;
+   b.rsi[1] = 49.9;
+   CheckVariants("lowest RSI 49.9", t, b,      false, true,  false,  true);
+
+   BaseLong(t, b);
+   b.rsi[2] = 50;
+   b.rsi[1] = 50;
+   CheckVariants("lowest RSI exactly 50", t, b, false, false, false, false);
+
+   BaseLong(t, b);
+   b.ema50[1] = 1.0977;   // bar 2 closed below EMA50
+   CheckVariants("bar 2 closed past EMA50", t, b, false, false, true, true);
+
+   BaseLong(t, b);
+   b.ema50[1] = 1.0977;
+   b.rsi[2] = 47;
+   CheckVariants("past EMA50 and RSI 47", t, b, false, false, false, true);
+
+   BaseLong(t, b);
+   t.close = 1.0899;      // no H4 trend: no variant may fire
+   CheckVariants("no H4 trend", t, b,          false, false, false, false);
+}
+
 void TestStops()
 {
    H4Trend t;
@@ -204,6 +256,7 @@ void OnStart()
    g_file = FileOpen("SignalTests.txt", FILE_WRITE | FILE_TXT | FILE_ANSI);
    Out("Signal tests, run at server time " + TimeToString(TimeTradeServer(), TIME_DATE | TIME_SECONDS));
    TestSignals();
+   TestVariants();
    TestStops();
    TestFilters();
    TestExits();

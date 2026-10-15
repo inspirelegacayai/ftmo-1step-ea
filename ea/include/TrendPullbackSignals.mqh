@@ -66,12 +66,40 @@ struct H1Bars
    double rsi[PULLBACK_BARS];
 };
 
+//--- Rule variants ---------------------------------------------------------
+// Test-only alternatives to the section 4 pullback rule, compared in the
+// 2026-10-15 diagnostic backtest. RULES_SPEC is the spec and the default;
+// the live EA must stay on it unless SPEC.md and CHANGELOG.md change first.
+enum ENUM_RULE_VARIANT
+{
+   RULES_SPEC,             // Spec: RSI 45/55, no close beyond EMA50
+   RULES_RSI50,            // RSI 50/50, no close beyond EMA50
+   RULES_NO_EMA50_GUARD,   // RSI 45/55, closes beyond EMA50 allowed
+   RULES_BOTH              // RSI 50/50, closes beyond EMA50 allowed
+};
+
+#define RSI_VARIANT_MIDLINE 50.0
+
+string RuleVariantText(const ENUM_RULE_VARIANT v)
+{
+   switch(v)
+   {
+      case RULES_RSI50:          return "rsi50";
+      case RULES_NO_EMA50_GUARD: return "noguard";
+      case RULES_BOTH:           return "rsi50-noguard";
+      default:                   return "spec";
+   }
+}
+
+bool UsesRsiMidline(const ENUM_RULE_VARIANT v) { return v == RULES_RSI50 || v == RULES_BOTH; }
+bool UsesEma50Guard(const ENUM_RULE_VARIANT v) { return v == RULES_SPEC || v == RULES_RSI50; }
+
 //--- Entry rules -----------------------------------------------------------
 
 bool TrendUp(const H4Trend &t)   { return t.close > t.emaSlow && t.emaFast > t.emaSlow; }
 bool TrendDown(const H4Trend &t) { return t.close < t.emaSlow && t.emaFast < t.emaSlow; }
 
-bool PullbackLong(const H1Bars &b)
+bool PullbackLong(const H1Bars &b, const ENUM_RULE_VARIANT v = RULES_SPEC)
 {
    bool touched = false;
    double lowestRsi = DBL_MAX;
@@ -79,14 +107,14 @@ bool PullbackLong(const H1Bars &b)
    {
       if(b.low[i] <= b.ema20[i])
          touched = true;
-      if(b.close[i] < b.ema50[i])
+      if(UsesEma50Guard(v) && b.close[i] < b.ema50[i])
          return false;
       lowestRsi = MathMin(lowestRsi, b.rsi[i]);
    }
-   return touched && lowestRsi < RSI_LONG_BELOW;
+   return touched && lowestRsi < (UsesRsiMidline(v) ? RSI_VARIANT_MIDLINE : RSI_LONG_BELOW);
 }
 
-bool PullbackShort(const H1Bars &b)
+bool PullbackShort(const H1Bars &b, const ENUM_RULE_VARIANT v = RULES_SPEC)
 {
    bool touched = false;
    double highestRsi = -DBL_MAX;
@@ -94,11 +122,11 @@ bool PullbackShort(const H1Bars &b)
    {
       if(b.high[i] >= b.ema20[i])
          touched = true;
-      if(b.close[i] > b.ema50[i])
+      if(UsesEma50Guard(v) && b.close[i] > b.ema50[i])
          return false;
       highestRsi = MathMax(highestRsi, b.rsi[i]);
    }
-   return touched && highestRsi > RSI_SHORT_ABOVE;
+   return touched && highestRsi > (UsesRsiMidline(v) ? RSI_VARIANT_MIDLINE : RSI_SHORT_ABOVE);
 }
 
 bool TriggerLong(const H1Bars &b)
@@ -111,11 +139,11 @@ bool TriggerShort(const H1Bars &b)
    return b.close[0] < b.ema20[0] && b.close[0] < b.low[1] && b.close[0] < b.open[0];
 }
 
-ENUM_SIGNAL EvaluateSignal(const H4Trend &t, const H1Bars &b)
+ENUM_SIGNAL EvaluateSignal(const H4Trend &t, const H1Bars &b, const ENUM_RULE_VARIANT v = RULES_SPEC)
 {
-   if(TrendUp(t) && PullbackLong(b) && TriggerLong(b))
+   if(TrendUp(t) && PullbackLong(b, v) && TriggerLong(b))
       return SIGNAL_LONG;
-   if(TrendDown(t) && PullbackShort(b) && TriggerShort(b))
+   if(TrendDown(t) && PullbackShort(b, v) && TriggerShort(b))
       return SIGNAL_SHORT;
    return SIGNAL_NONE;
 }

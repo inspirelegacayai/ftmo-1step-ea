@@ -39,6 +39,9 @@ input group "Strategy"
 input int    InpTakeProfitPips = 40;
 input bool   InpUseNewsFilter  = true;                  // Calendar does not work in the tester; ignored there
 
+input group "Testing only"
+input ENUM_RULE_VARIANT InpRuleVariant = RULES_SPEC;    // Pullback rule variant (live accounts refuse anything but Spec)
+
 input group "EA"
 input long   InpMagic  = 20261002;
 input string InpLogTag = "";                            // Added to log file names, e.g. "TP40_2016-2018"
@@ -131,6 +134,12 @@ int OnInit()
       }
       initial = AccountInfoDouble(ACCOUNT_BALANCE);
    }
+   // Variants are untested alternatives to SPEC section 4; they never trade real orders
+   if(!g_tester && InpRuleVariant != RULES_SPEC)
+   {
+      Print("InpRuleVariant is for the Strategy Tester only. Set it to Spec on a live account.");
+      return INIT_PARAMETERS_INCORRECT;
+   }
    if(InpRiskPercent <= 0.0 || InpTakeProfitPips <= 0)
    {
       Print("InpRiskPercent and InpTakeProfitPips must be positive.");
@@ -157,7 +166,7 @@ int OnInit()
    g_risk.Save();
 
    // Tester runs start empty files; live runs append across restarts
-   string logName = g_tester ? "TrendPullback_tester"
+   string logName = g_tester ? "TrendPullback_tester_" + RuleVariantText(InpRuleVariant)
                              : StringFormat("TrendPullback_%I64d_%I64d", AccountInfoInteger(ACCOUNT_LOGIN), InpMagic);
    if(InpLogTag != "")
       logName += "_" + InpLogTag;
@@ -439,7 +448,7 @@ void CheckNewBar(SymbolContext &c, const datetime now)
       return;   // history or indicators not ready; try again next tick
    c.lastBarTime = barOpen;
 
-   ENUM_SIGNAL s = EvaluateSignal(t, b);
+   ENUM_SIGNAL s = EvaluateSignal(t, b, InpRuleVariant);
    if(s != SIGNAL_NONE)
       TryEntry(c, s, b, barOpen, now);
 }
