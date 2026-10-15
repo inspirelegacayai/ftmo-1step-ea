@@ -35,3 +35,9 @@ date, what changed, why, and the backtest that supports it.
   test-only variants: RSI 50/50 instead of 45/55; no "close beyond EMA50" check; both. The
   variants are an input (InpRuleVariant) that defaults to the spec and is refused on live
   accounts. Caveat: no untouched data remains to confirm whichever variant looks best.
+- 2026-10-15: Diagnostic backtest result, no rule change. 2025-06-01 to 2026-10-14, EURUSD.sim
+  and GBPUSD.sim, every tick based on real ticks, 0.5% risk, TP 40. Spec: 6 trades, PF 0.86,
+  -0.16%. RSI 50/50: 47 trades, PF 0.74, -3.21%. No EMA50 check: 102 trades, PF 0.76, -5.11%,
+  floor guard blocked entries from 2026-07-09. Both: 42 trades, PF 0.48, -5.63%, floor guard
+  blocked entries from 2025-09-04. None reached the 10% target. Every loosening lost money, so
+  the live EA stays on the spec rules. Report: reports/2026-10-15_diagnostic_2025-06-01_2026-10-14_risk0.5_TP40_realticks.md
