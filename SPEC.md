@@ -137,7 +137,7 @@ Data: the FTMO server's own real ticks, the only history available. Every tick b
 
 - In-sample: 2025-06-01 to 2026-05-31. All development and any adjustment happens here.
 - Hold-out: 2026-06-01 to 2026-10-14. Not run until the owner freezes a candidate's rules. Run once per frozen candidate. A candidate that fails it is dropped, not adjusted.
-- Proposed bar to replace the live entry (owner to confirm before hold-out runs): in-sample profit factor above 1.2 with at least 40 trades, and on the hold-out a profit factor above 1.0 with no FTMO breach in the 1-Step replay.
+- Go-live bar to replace the live entry (confirmed by the owner 2026-10-16, before any candidate result was seen): in-sample profit factor above 1.2 with at least 40 trades, and on the hold-out a profit factor above 1.0 with no FTMO breach in the 1-Step replay. Both must hold.
 
 > **Skipped (owner decision 2026-10-05).** The FTMO server only has history from April 2025, and getting long tick history elsewhere (Dukascopy) was rate-limited to days of downloading. The owner chose to go straight to the challenge at 0.25% risk instead. Consequence: the strategy goes live with no evidence that it is profitable, and none of the pass criteria below or the section 12 go-live bar are checked. The risk rules in section 6 still cap losses. The protocol below is kept for reference if backtesting is picked up later.
 

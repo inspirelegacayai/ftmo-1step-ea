@@ -47,3 +47,6 @@ date, what changed, why, and the backtest that supports it.
   hold-out 2026-06-01 to 2026-10-14 run once per frozen candidate, and a proposed go-live bar
   for the owner to confirm. Section 4 stays live until a candidate passes.
   Backtest: none yet; rules fixed before testing.
+- 2026-10-16: Section 11 go-live bar confirmed by the owner while the first in-sample run was in
+  progress and before any candidate result was seen: in-sample PF > 1.2 with >= 40 trades, and
+  hold-out PF > 1.0 with no FTMO breach. Backtest: none; criteria fixed in advance.
