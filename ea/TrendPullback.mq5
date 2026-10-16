@@ -189,8 +189,9 @@ int OnInit()
    EventSetTimer(1);
    // The daily floor isn't shown here: on a fresh start the FTMO day only begins on the
    // first tick, so it would print a meaningless value. The "New FTMO day" line has it.
-   Notify(StringFormat("started. Initial balance %.2f, risk %.2f%%, TP %d pips, state %s. Trailing floor %.2f.",
-                       initial, InpRiskPercent, InpTakeProfitPips, restored ? "restored" : "new",
+   // Entries named in full so a mis-set tester run is obvious from its first log line
+   Notify(StringFormat("started. Entries %s, initial balance %.2f, risk %.2f%%, TP %d pips, state %s. Trailing floor %.2f.",
+                       testName, initial, InpRiskPercent, InpTakeProfitPips, restored ? "restored" : "new",
                        g_risk.TrailingFloor()));
    return INIT_SUCCEEDED;
 }
