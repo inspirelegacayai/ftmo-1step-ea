@@ -50,3 +50,9 @@ date, what changed, why, and the backtest that supports it.
 - 2026-10-16: Section 11 go-live bar confirmed by the owner while the first in-sample run was in
   progress and before any candidate result was seen: in-sample PF > 1.2 with >= 40 trades, and
   hold-out PF > 1.0 with no FTMO breach. Backtest: none; criteria fixed in advance.
+- 2026-10-16: Candidate in-sample result, no rule change. 2025-06-01 to 2026-05-31, EURUSD.sim
+  and GBPUSD.sim, every tick based on real ticks, 0.5% risk, TP 40. A London breakout: 274
+  trades, win rate 48.5%, PF 1.18, +10.17%, max DD from highest EOD 5.98%, worst day -1.19%,
+  FTMO replay passed 2026-05-05. B Holy Grail: 21 trades, PF 0.76, -1.23%. Neither meets the
+  in-sample bar (PF > 1.2 with >= 40 trades); hold-out not run. Report:
+  reports/2026-10-16_candidates_insample_2025-06-01_2026-05-31_risk0.5_TP40_realticks.md
