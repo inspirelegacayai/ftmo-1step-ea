@@ -325,6 +325,7 @@ public:
                       SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP));
    }
 
+   int    EntriesToday() const      { return m_state.entriesToday; }
    bool   KillSwitchActive() const  { return m_state.killSwitchActive; }
    bool   FloorGuardLatched() const { return m_state.floorGuardLatched; }
    double TrailingFloor() const     { return FtmoTrailingFloor(m_state.highestEodBalance, m_initialBalance); }

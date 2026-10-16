@@ -17,6 +17,7 @@
 #include "include\FtmoRules.mqh"
 #include "include\RiskManager.mqh"
 #include "include\TrendPullbackSignals.mqh"
+#include "include\CandidateSignals.mqh"
 #include "include\Logger.mqh"
 
 #define SYMBOL_COUNT        2
@@ -40,6 +41,7 @@ input int    InpTakeProfitPips = 40;
 input bool   InpUseNewsFilter  = true;                  // Calendar does not work in the tester; ignored there
 
 input group "Testing only"
+input ENUM_ENTRY_MODEL  InpEntryModel  = ENTRY_TREND_PULLBACK; // Entry model (live accounts refuse anything but Trend pullback)
 input ENUM_RULE_VARIANT InpRuleVariant = RULES_SPEC;    // Pullback rule variant (live accounts refuse anything but Spec)
 
 input group "EA"
@@ -57,8 +59,11 @@ struct SymbolContext
    int      hEma20H1;
    int      hEma50H1;
    int      hRsiH1;
+   int      hAdxH1;        // Holy Grail (section 4A-B)
    datetime lastBarTime;   // H1 bar already evaluated
 };
+
+#define BREAKOUT_LOOKBACK_BARS 24   // covers 00:00 London to the latest session bar
 
 CTrade        g_trade;
 CRiskManager  g_risk;
@@ -97,10 +102,11 @@ bool InitSymbol(SymbolContext &c, const string name, const double maxSpreadPips)
    c.hEma20H1    = iMA(name, PERIOD_H1, PULLBACK_EMA, 0, MODE_EMA, PRICE_CLOSE);
    c.hEma50H1    = iMA(name, PERIOD_H1, PULLBACK_GUARD_EMA, 0, MODE_EMA, PRICE_CLOSE);
    c.hRsiH1      = iRSI(name, PERIOD_H1, RSI_PERIOD, PRICE_CLOSE);
+   c.hAdxH1      = iADX(name, PERIOD_H1, GRAIL_ADX_PERIOD);
    // Start from the bar in progress: signals only fire on the first tick of a new bar
    c.lastBarTime = iTime(name, PERIOD_H1, 0);
    if(c.hEmaFastH4 == INVALID_HANDLE || c.hEmaSlowH4 == INVALID_HANDLE || c.hEma20H1 == INVALID_HANDLE ||
-      c.hEma50H1 == INVALID_HANDLE || c.hRsiH1 == INVALID_HANDLE)
+      c.hEma50H1 == INVALID_HANDLE || c.hRsiH1 == INVALID_HANDLE || c.hAdxH1 == INVALID_HANDLE)
    {
       Print("Indicator handle failed for ", name, ", error ", GetLastError());
       return false;
@@ -115,6 +121,7 @@ void ReleaseSymbol(SymbolContext &c)
    IndicatorRelease(c.hEma20H1);
    IndicatorRelease(c.hEma50H1);
    IndicatorRelease(c.hRsiH1);
+   IndicatorRelease(c.hAdxH1);
 }
 
 int OnInit()
@@ -135,9 +142,10 @@ int OnInit()
       initial = AccountInfoDouble(ACCOUNT_BALANCE);
    }
    // Variants are untested alternatives to SPEC section 4; they never trade real orders
-   if(!g_tester && InpRuleVariant != RULES_SPEC)
+   if(!g_tester && (InpRuleVariant != RULES_SPEC || InpEntryModel != ENTRY_TREND_PULLBACK))
    {
-      Print("InpRuleVariant is for the Strategy Tester only. Set it to Spec on a live account.");
+      Print("InpEntryModel and InpRuleVariant are for the Strategy Tester only. ",
+            "Set them to Trend pullback and Spec on a live account.");
       return INIT_PARAMETERS_INCORRECT;
    }
    if(InpRiskPercent <= 0.0 || InpTakeProfitPips <= 0)
@@ -166,7 +174,9 @@ int OnInit()
    g_risk.Save();
 
    // Tester runs start empty files; live runs append across restarts
-   string logName = g_tester ? "TrendPullback_tester_" + RuleVariantText(InpRuleVariant)
+   string testName = InpEntryModel == ENTRY_TREND_PULLBACK ? RuleVariantText(InpRuleVariant)
+                                                           : EntryModelText(InpEntryModel);
+   string logName = g_tester ? "TrendPullback_tester_" + testName
                              : StringFormat("TrendPullback_%I64d_%I64d", AccountInfoInteger(ACCOUNT_LOGIN), InpMagic);
    if(InpLogTag != "")
       logName += "_" + InpLogTag;
@@ -254,6 +264,60 @@ void ApplyTimeStops(const datetime now)
          continue;
       if(TimeStopDue((datetime)PositionGetInteger(POSITION_TIME), now))
          ClosePosition(ticket, EXIT_TIME_STOP);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Pending stop orders (Holy Grail, section 4A-B)                   |
+//+------------------------------------------------------------------+
+int CountPendingOrders(const string symbol)
+{
+   int count = 0;
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   {
+      if(OrderGetTicket(i) == 0 || OrderGetInteger(ORDER_MAGIC) != InpMagic)
+         continue;
+      if(symbol == "" || OrderGetString(ORDER_SYMBOL) == symbol)
+         count++;
+   }
+   return count;
+}
+
+bool CancelOrder(const ulong ticket, const string why)
+{
+   string symbol = OrderSelect(ticket) ? OrderGetString(ORDER_SYMBOL) : "";
+   bool sent = g_trade.OrderDelete(ticket);
+   uint code = g_trade.ResultRetcode();
+   if(sent && code == TRADE_RETCODE_DONE)
+   {
+      g_log.ForgetPosition(ticket);   // entry metadata saved at placement is no longer needed
+      PrintFormat("Cancelled pending order #%I64u %s (%s)", ticket, symbol, why);
+      return true;
+   }
+   Notify(StringFormat("ERROR cancelling pending order #%I64u %s (%s): retcode %u %s", ticket, symbol, why,
+                       code, g_trade.ResultRetcodeDescription()));
+   return false;
+}
+
+// Repeats every tick, so a failed cancel is retried
+void ManagePendingOrders(const datetime now)
+{
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = OrderGetTicket(i);
+      if(ticket == 0 || OrderGetInteger(ORDER_MAGIC) != InpMagic)
+         continue;
+      string why = "";
+      if(g_risk.KillSwitchActive())
+         why = "kill switch";
+      else if(IsFridayCloseTime(now))
+         why = "Friday close";
+      else if(!IsEntrySession(now))
+         why = "London session ended";
+      else if(GrailOrderExpired((datetime)OrderGetInteger(ORDER_TIME_SETUP), now))
+         why = StringFormat("not filled within %d bars", GRAIL_EXPIRY_BARS);
+      if(why != "")
+         CancelOrder(ticket, why);
    }
 }
 
@@ -371,49 +435,115 @@ void AlignTakeProfitToFill(const SymbolContext &c, const ENUM_SIGNAL s, const ul
                           g_trade.ResultRetcode(), g_trade.ResultRetcodeDescription()));
 }
 
-void TryEntry(SymbolContext &c, const ENUM_SIGNAL s, const H1Bars &b, const datetime barOpen, const datetime now)
+// Section 5 filters and section 6 limits, shared by every entry type. Pending orders count
+// as positions and toward the daily entry cap. Returns "" when the entry may go ahead.
+string EntryBlockReason(const SymbolContext &c, const datetime barOpen, const datetime now,
+                        double &ask, double &bid, double &spreadPips)
 {
-   ENUM_ENTRY_CHECK limit = g_risk.CheckNewEntry(CountPositions(c.name), CountPositions(""));
-   if(limit != ENTRY_ALLOWED)            { SkipLog(c, s, EntryCheckText(limit)); return; }
-   if(IsHolidayBlackout(barOpen))        { SkipLog(c, s, "holiday blackout"); return; }
-   if(!IsEntrySession(barOpen))          { SkipLog(c, s, "outside London session"); return; }
+   int pendingSymbol = CountPendingOrders(c.name);
+   int pendingTotal  = CountPendingOrders("");
+   ENUM_ENTRY_CHECK limit = g_risk.CheckNewEntry(CountPositions(c.name) + pendingSymbol,
+                                                 CountPositions("") + pendingTotal);
+   if(limit != ENTRY_ALLOWED)
+      return EntryCheckText(limit);
+   if(g_risk.EntriesToday() + pendingTotal >= MAX_ENTRIES_PER_FTMO_DAY)
+      return "max entries for this FTMO day reached, counting pending orders";
+   if(IsHolidayBlackout(barOpen))
+      return "holiday blackout";
+   if(!IsEntrySession(barOpen))
+      return "outside London session";
 
-   double ask = SymbolInfoDouble(c.name, SYMBOL_ASK);
-   double bid = SymbolInfoDouble(c.name, SYMBOL_BID);
-   double spreadPips = (ask - bid) / c.pip;
+   ask = SymbolInfoDouble(c.name, SYMBOL_ASK);
+   bid = SymbolInfoDouble(c.name, SYMBOL_BID);
+   spreadPips = (ask - bid) / c.pip;
    if(!SpreadOk(spreadPips, c.maxSpreadPips))
-   {
-      SkipLog(c, s, StringFormat("spread %.1f pips over %.1f", spreadPips, c.maxSpreadPips));
-      return;
-   }
+      return StringFormat("spread %.1f pips over %.1f", spreadPips, c.maxSpreadPips);
 
    string newsWhy = "";
-   if(g_newsFilter && NewsBlackout(now, newsWhy)) { SkipLog(c, s, "news: " + newsWhy); return; }
+   if(g_newsFilter && NewsBlackout(now, newsWhy))
+      return "news: " + newsWhy;
+   return "";
+}
 
-   bool   isLong = (s == SIGNAL_LONG);
-   double entry  = isLong ? ask : bid;
-   double sl     = NormalizeDouble(isLong ? StopLossLong(b, c.pip) : StopLossShort(b, c.pip), c.digits);
-   double tp     = NormalizeDouble(isLong ? entry + InpTakeProfitPips * c.pip : entry - InpTakeProfitPips * c.pip, c.digits);
-   double stopPips = StopPips(entry, sl, c.pip);
+// Stop distance check and lot size for an entry at `entry` with stop `sl`. Returns lots, 0 to skip.
+double SizeEntry(const SymbolContext &c, const ENUM_SIGNAL s, const double entry, const double sl,
+                 double &stopPips, double &riskPct)
+{
+   bool isLong = (s == SIGNAL_LONG);
+   stopPips = StopPips(entry, sl, c.pip);
    if((isLong && sl >= entry) || (!isLong && sl <= entry))
    {
       SkipLog(c, s, StringFormat("price already through the stop level %.5f", sl));
-      return;
+      return 0.0;
    }
    if(!StopSizeOk(stopPips))
    {
       SkipLog(c, s, StringFormat("stop %.1f pips outside %.0f-%.0f", stopPips, STOP_MIN_PIPS, STOP_MAX_PIPS));
-      return;
+      return 0.0;
    }
-
-   double equity  = AccountInfoDouble(ACCOUNT_EQUITY);
-   double riskPct = g_risk.RiskPctForNextTrade(equity);
-   double lots    = g_risk.LotsFor(c.name, stopPips, riskPct);
+   riskPct = g_risk.RiskPctForNextTrade(AccountInfoDouble(ACCOUNT_EQUITY));
+   double lots = g_risk.LotsFor(c.name, stopPips, riskPct);
    if(lots <= 0.0)
-   {
       SkipLog(c, s, StringFormat("lot size below minimum at %.2f%% risk", riskPct));
+   return lots;
+}
+
+// Pending stop order at orderPrice (section 4A-B). Counts as an entry when it fills.
+void TryPendingEntry(SymbolContext &c, const ENUM_SIGNAL s, const double orderPrice, const double stopLevel,
+                     const datetime barOpen, const datetime now)
+{
+   double ask = 0, bid = 0, spreadPips = 0;
+   string blocked = EntryBlockReason(c, barOpen, now, ask, bid, spreadPips);
+   if(blocked != "") { SkipLog(c, s, blocked); return; }
+
+   bool   isLong = (s == SIGNAL_LONG);
+   double price  = NormalizeDouble(orderPrice, c.digits);
+   double sl     = NormalizeDouble(stopLevel, c.digits);
+   double tp     = NormalizeDouble(isLong ? price + InpTakeProfitPips * c.pip : price - InpTakeProfitPips * c.pip, c.digits);
+   // A stop order must sit beyond the market by at least the broker's stops level
+   double minGap = SymbolInfoInteger(c.name, SYMBOL_TRADE_STOPS_LEVEL) * SymbolInfoDouble(c.name, SYMBOL_POINT);
+   if((isLong && price <= ask + minGap) || (!isLong && price >= bid - minGap))
+   {
+      SkipLog(c, s, StringFormat("price already at or beyond the order price %.5f", price));
       return;
    }
+   double stopPips = 0, riskPct = 0;
+   double lots = SizeEntry(c, s, price, sl, stopPips, riskPct);
+   if(lots <= 0.0)
+      return;
+
+   g_trade.SetTypeFillingBySymbol(c.name);
+   string comment = StringFormat("HG %s %.1fp %.2f%%", isLong ? "L" : "S", stopPips, riskPct);
+   bool sent = isLong ? g_trade.BuyStop(lots, price, c.name, sl, tp, ORDER_TIME_GTC, 0, comment)
+                      : g_trade.SellStop(lots, price, c.name, sl, tp, ORDER_TIME_GTC, 0, comment);
+   uint code = g_trade.ResultRetcode();
+   if(!sent || (code != TRADE_RETCODE_DONE && code != TRADE_RETCODE_PLACED))
+   {
+      Notify(StringFormat("ERROR placing %s %s stop %.2f lots at %.5f SL %.5f TP %.5f: retcode %u %s", c.name,
+                          SignalText(s), lots, price, sl, tp, code, g_trade.ResultRetcodeDescription()));
+      return;
+   }
+   // The position opened by this order will carry the order's ticket as its id
+   g_log.SaveEntryMeta(g_trade.ResultOrder(), riskPct, spreadPips);
+   PrintFormat("Placed %s %s stop #%I64u %.2f lots at %.5f, SL %.5f (%.1f pips), TP %.5f, risk %.2f%%, spread %.1f pips",
+               c.name, SignalText(s), g_trade.ResultOrder(), lots, price, sl, stopPips, tp, riskPct, spreadPips);
+}
+
+// Market order on the first tick of the new bar (sections 4 and 4A-A)
+void TryMarketEntry(SymbolContext &c, const ENUM_SIGNAL s, const double stopLevel, const datetime barOpen, const datetime now)
+{
+   double ask = 0, bid = 0, spreadPips = 0;
+   string blocked = EntryBlockReason(c, barOpen, now, ask, bid, spreadPips);
+   if(blocked != "") { SkipLog(c, s, blocked); return; }
+
+   bool   isLong = (s == SIGNAL_LONG);
+   double entry  = isLong ? ask : bid;
+   double sl     = NormalizeDouble(stopLevel, c.digits);
+   double tp     = NormalizeDouble(isLong ? entry + InpTakeProfitPips * c.pip : entry - InpTakeProfitPips * c.pip, c.digits);
+   double stopPips = 0, riskPct = 0;
+   double lots = SizeEntry(c, s, entry, sl, stopPips, riskPct);
+   if(lots <= 0.0)
+      return;
 
    g_trade.SetTypeFillingBySymbol(c.name);
    string comment = StringFormat("TP %s %.1fp %.2f%%", isLong ? "L" : "S", stopPips, riskPct);
@@ -435,7 +565,46 @@ void TryEntry(SymbolContext &c, const ENUM_SIGNAL s, const H1Bars &b, const date
    AlignTakeProfitToFill(c, s, g_trade.ResultDeal());
 }
 
-// Evaluates a symbol once per new H1 bar
+// Section 4A-A. Returns false when data isn't ready, so the bar is retried.
+bool CheckBreakout(SymbolContext &c, const datetime barOpen, const datetime now)
+{
+   MqlRates bars[];
+   if(CopyRates(c.name, PERIOD_H1, 1, BREAKOUT_LOOKBACK_BARS, bars) != BREAKOUT_LOOKBACK_BARS)
+      return false;
+   MqlRates bar1 = bars[BREAKOUT_LOOKBACK_BARS - 1];   // oldest first: the last is bar 1
+   AsianRange r;
+   BuildAsianRange(bars, LondonDateOf(bar1.time), r);
+   ENUM_SIGNAL s = FirstBreakoutSignal(bars, r, bar1.time, bar1.close);
+   if(s != SIGNAL_NONE)
+      TryMarketEntry(c, s, BreakoutStop(r, s, c.pip), barOpen, now);
+   return true;
+}
+
+// Section 4A-B. Returns false when data isn't ready, so the bar is retried.
+bool CheckHolyGrail(SymbolContext &c, const H1Bars &b, const datetime barOpen, const datetime now)
+{
+   // iADX buffers: 0 = ADX, 1 = +DI, 2 = -DI. Closed bars only (start at index 1).
+   double adx[], plusDi[], minusDi[];
+   ArraySetAsSeries(adx, true);
+   if(CopyBuffer(c.hAdxH1, 0, 1, 2, adx) != 2 || CopyBuffer(c.hAdxH1, 1, 1, 1, plusDi) != 1 ||
+      CopyBuffer(c.hAdxH1, 2, 1, 1, minusDi) != 1)
+      return false;
+   GrailBars g;
+   g.adx1     = adx[0];
+   g.adx2     = adx[1];
+   g.plusDi1  = plusDi[0];
+   g.minusDi1 = minusDi[0];
+   g.high1    = b.high[0];
+   g.low1     = b.low[0];
+   g.ema20_1  = b.ema20[0];
+   ENUM_SIGNAL s = GrailSignal(g);
+   if(s != SIGNAL_NONE)
+      TryPendingEntry(c, s, GrailOrderPrice(g, s, c.pip),
+                      s == SIGNAL_LONG ? StopLossLong(b, c.pip) : StopLossShort(b, c.pip), barOpen, now);
+   return true;
+}
+
+// Evaluates a symbol once per new H1 bar with the selected entry model
 void CheckNewBar(SymbolContext &c, const datetime now)
 {
    datetime barOpen = iTime(c.name, PERIOD_H1, 0);
@@ -446,11 +615,24 @@ void CheckNewBar(SymbolContext &c, const datetime now)
    H1Bars  b;
    if(!LoadSignalData(c, t, b))
       return;   // history or indicators not ready; try again next tick
-   c.lastBarTime = barOpen;
 
+   if(InpEntryModel == ENTRY_LONDON_BREAKOUT)
+   {
+      if(CheckBreakout(c, barOpen, now))
+         c.lastBarTime = barOpen;
+      return;
+   }
+   if(InpEntryModel == ENTRY_HOLY_GRAIL)
+   {
+      if(CheckHolyGrail(c, b, barOpen, now))
+         c.lastBarTime = barOpen;
+      return;
+   }
+
+   c.lastBarTime = barOpen;
    ENUM_SIGNAL s = EvaluateSignal(t, b, InpRuleVariant);
    if(s != SIGNAL_NONE)
-      TryEntry(c, s, b, barOpen, now);
+      TryMarketEntry(c, s, s == SIGNAL_LONG ? StopLossLong(b, c.pip) : StopLossShort(b, c.pip), barOpen, now);
 }
 
 //+------------------------------------------------------------------+
@@ -482,6 +664,8 @@ void Process()
    if(IsFridayCloseTime(now) && CountPositions("") > 0)
       CloseAll(EXIT_FRIDAY_CLOSE);
    ApplyTimeStops(now);
+   if(CountPendingOrders("") > 0)
+      ManagePendingOrders(now);
 
    for(int i = 0; i < SYMBOL_COUNT; i++)
       CheckNewBar(g_sym[i], now);
@@ -520,8 +704,34 @@ void ProcessClosedTrades()
    g_log.MarkProcessed();
 }
 
+// A pending stop order filled: count the entry and put the target TakeProfitPips from the fill.
+// Market entries are counted where they are sent, so only stop-order fills are handled here.
+void OnStopOrderFilled(const ulong deal)
+{
+   if(HistoryDealGetInteger(deal, DEAL_MAGIC) != InpMagic ||
+      (ENUM_DEAL_ENTRY)HistoryDealGetInteger(deal, DEAL_ENTRY) != DEAL_ENTRY_IN)
+      return;
+   ulong order = (ulong)HistoryDealGetInteger(deal, DEAL_ORDER);
+   if(!HistoryOrderSelect(order))
+      return;
+   ENUM_ORDER_TYPE type = (ENUM_ORDER_TYPE)HistoryOrderGetInteger(order, ORDER_TYPE);
+   if(type != ORDER_TYPE_BUY_STOP && type != ORDER_TYPE_SELL_STOP)
+      return;
+
+   g_risk.OnEntryOpened();
+   string symbol = HistoryDealGetString(deal, DEAL_SYMBOL);
+   ENUM_SIGNAL s = (type == ORDER_TYPE_BUY_STOP) ? SIGNAL_LONG : SIGNAL_SHORT;
+   PrintFormat("Stop order #%I64u filled: %s %s at %.5f", order, symbol, SignalText(s), HistoryDealGetDouble(deal, DEAL_PRICE));
+   for(int i = 0; i < SYMBOL_COUNT; i++)
+      if(g_sym[i].name == symbol)
+         AlignTakeProfitToFill(g_sym[i], s, deal);
+}
+
 void OnTradeTransaction(const MqlTradeTransaction &trans, const MqlTradeRequest &request, const MqlTradeResult &result)
 {
-   if(trans.type == TRADE_TRANSACTION_DEAL_ADD)
-      ProcessClosedTrades();
+   if(trans.type != TRADE_TRANSACTION_DEAL_ADD)
+      return;
+   if(HistoryDealSelect(trans.deal))
+      OnStopOrderFilled(trans.deal);
+   ProcessClosedTrades();
 }
