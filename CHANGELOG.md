@@ -60,3 +60,10 @@ date, what changed, why, and the backtest that supports it.
   testing: A1 H4 trend filter, A2 stop at the Asian range midpoint, A3 both. In-sample only,
   same bar; the best goes to the hold-out once, and no further breakout variants before it.
   Backtest: pending.
+- 2026-10-16: Breakout variant in-sample result, no rule change. Same period and settings.
+  A: 274 trades, PF 1.18, +9.73%, max DD 6.14%, FTMO replay passed 2026-05-05 (re-run of the
+  earlier A: same trades, net $44 lower, likely tester execution delay). A1 trend filter: 128
+  trades, PF 1.17, +3.93%. A2 mid-range stop: 184 trades, PF 0.91, -4.20%. A3 both: 84 trades,
+  PF 0.66, -6.58%. None meets the in-sample bar; hold-out not run. One A2 day reached -1.51%:
+  the kill switch fired at -1.5% and the close filled $1 further down, not a logic fault.
+  Report: reports/2026-10-16_breakout-variants_insample_2025-06-01_2026-05-31_risk0.5_TP40_realticks.md
