@@ -53,6 +53,31 @@ Mirror image:
 
 Market order on the first tick of the new H1 bar, with stop loss and take profit attached to the order so they live on FTMO's server.
 
+## 4A. Candidate entries v2 (under test, added 2026-10-16)
+
+The section 4 rules took 6 trades in 16 months on the FTMO server's data and every loosening lost money (CHANGELOG 2026-10-15). Two replacement entries are being tested. Everything else (sections 2, 3, 5, 6, 7, 8, 9) applies unchanged to both, including the London session filter, the 15 to 40 pip stop-size filter, the 2-per-day and position caps, and all exits. Only one entry runs at a time, chosen by an input that is test-only until one candidate is approved and section 4 is rewritten.
+
+Choices marked *(choice)* are where published versions of the setup differ; they were picked before testing and are not to be tuned on the hold-out data.
+
+### A. London breakout
+
+1. Asian range: the highest high and lowest low of the H1 bars that open from 00:00 to 06:00 London time on the current London date (7 bars, all closed by 07:00).
+2. Long: H1 bar 1 opened at 07:00 London or later on the same date and closed above the Asian range high. Short: closed below the Asian range low. *(choice: a confirmed close, not a stop order at the range edge)*
+3. Only the first bar 1 of the day that closes outside the range counts, per symbol. If that signal is skipped by a filter or a limit, there is no second attempt that day. *(choice)*
+4. Stop: long = Asian range low minus 3 pips; short = Asian range high plus 3 pips. *(choice: the opposite side of the range, not its midpoint)* The 15 to 40 pip stop-size filter applies, so days with a wide range are skipped.
+5. Target: TakeProfitPips (section 7). No trend filter. *(choice)*
+6. Execution as section 4: market order on the first tick of the new H1 bar, stop and target attached.
+
+### B. Holy Grail (Raschke/Connors, from section 10)
+
+1. ADX(14) on H1, bar 1: above 30, and higher than on bar 2.
+2. Direction: long when +DI > -DI on bar 1, short when -DI > +DI. *(choice: DI decides direction)*
+3. Touch: long when bar 1 low <= EMA(20) at bar 1; short when bar 1 high >= EMA(20). *(choice: bar 1 only)*
+4. Order: long = buy stop 1 pip above bar 1 high; short = sell stop 1 pip below bar 1 low. Placed on the first tick of the new H1 bar, with stop and target attached. Skipped if price is already beyond the order price.
+5. Stop: section 7 rule (lowest low of bars 1 to 3 minus 3 pips, or highest high plus 3 pips). Size and stop-size filter measured from the order price. Target: TakeProfitPips from the order price, re-aligned to the fill.
+6. Cancelled if not filled within 3 H1 bars, at the end of the London session (15:00), by the Friday close, or by the kill switch. *(choice: also cancelled at session end)*
+7. A pending order counts as a position for the per-symbol and total caps. It counts toward the 2 entries per FTMO day when it fills; no new order is placed if fills plus pending orders already reach 2.
+
 ## 5. Filters (skip the trade if any fail)
 
 - Session: the new H1 bar opens between 07:00 and 15:00 London time (Europe/London, daylight saving aware).
@@ -95,7 +120,7 @@ Market order on the first tick of the new H1 bar, with stop loss and take profit
 
 ## 10. Benchmark EA (Holy Grail)
 
-> **Skipped (owner decision 2026-10-05).** Backtesting is skipped, and the benchmark only exists to compare against in backtests. Kept here for reference.
+> **Now candidate B in section 4A (2026-10-16)**, with the open points made exact there. The original benchmark text is kept for reference.
 
 A second EA using the published Raschke/Connors Holy Grail entry, so we can tell whether our rules beat a known setup:
 
@@ -105,6 +130,14 @@ A second EA using the published Raschke/Connors Holy Grail entry, so we can tell
 - Same exits, filters, risk rules and logging as the main EA, so the only difference is the entry.
 
 ## 11. Backtest protocol
+
+### Candidate test plan (section 4A, 2026-10-16)
+
+Data: the FTMO server's own real ticks, the only history available. Every tick based on real ticks, 0.5% risk, TakeProfitPips 40, $10,000 deposit, EURUSD.sim and GBPUSD.sim.
+
+- In-sample: 2025-06-01 to 2026-05-31. All development and any adjustment happens here.
+- Hold-out: 2026-06-01 to 2026-10-14. Not run until the owner freezes a candidate's rules. Run once per frozen candidate. A candidate that fails it is dropped, not adjusted.
+- Proposed bar to replace the live entry (owner to confirm before hold-out runs): in-sample profit factor above 1.2 with at least 40 trades, and on the hold-out a profit factor above 1.0 with no FTMO breach in the 1-Step replay.
 
 > **Skipped (owner decision 2026-10-05).** The FTMO server only has history from April 2025, and getting long tick history elsewhere (Dukascopy) was rate-limited to days of downloading. The owner chose to go straight to the challenge at 0.25% risk instead. Consequence: the strategy goes live with no evidence that it is profitable, and none of the pass criteria below or the section 12 go-live bar are checked. The risk rules in section 6 still cap losses. The protocol below is kept for reference if backtesting is picked up later.
 

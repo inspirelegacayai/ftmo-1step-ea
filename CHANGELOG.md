@@ -41,3 +41,9 @@ date, what changed, why, and the backtest that supports it.
   floor guard blocked entries from 2026-07-09. Both: 42 trades, PF 0.48, -5.63%, floor guard
   blocked entries from 2025-09-04. None reached the 10% target. Every loosening lost money, so
   the live EA stays on the spec rules. Report: reports/2026-10-15_diagnostic_2025-06-01_2026-10-14_risk0.5_TP40_realticks.md
+- 2026-10-16: SPEC section 4A added: two candidate entries to replace section 4, A London
+  breakout and B Holy Grail (owner decision; same constraints as v1). Section 10 benchmark is
+  now candidate B. Section 11 gains the candidate test plan: in-sample 2025-06-01 to 2026-05-31,
+  hold-out 2026-06-01 to 2026-10-14 run once per frozen candidate, and a proposed go-live bar
+  for the owner to confirm. Section 4 stays live until a candidate passes.
+  Backtest: none yet; rules fixed before testing.
