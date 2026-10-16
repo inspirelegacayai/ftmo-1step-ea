@@ -68,6 +68,14 @@ Choices marked *(choice)* are where published versions of the setup differ; they
 5. Target: TakeProfitPips (section 7). No trend filter. *(choice)*
 6. Execution as section 4: market order on the first tick of the new H1 bar, stop and target attached.
 
+Development variants (added 2026-10-16 after the first in-sample run gave PF 1.18 against the 1.2 bar; in-sample only, the best one goes to the hold-out once):
+
+- A1, trend filter: rules 1 to 6, plus longs only when the section 4 H4 trend is up (close > EMA(200) and EMA(50) > EMA(200)), shorts only when it is down.
+- A2, mid-range stop: rules 1 to 6, but the stop is the midpoint of the Asian range minus 3 pips for a long, plus 3 pips for a short.
+- A3: both A1 and A2.
+
+No other breakout variants are to be tried before the hold-out.
+
 ### B. Holy Grail (Raschke/Connors, from section 10)
 
 1. ADX(14) on H1, bar 1: above 30, and higher than on bar 2.

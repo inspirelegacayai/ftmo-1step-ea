@@ -56,3 +56,7 @@ date, what changed, why, and the backtest that supports it.
   FTMO replay passed 2026-05-05. B Holy Grail: 21 trades, PF 0.76, -1.23%. Neither meets the
   in-sample bar (PF > 1.2 with >= 40 trades); hold-out not run. Report:
   reports/2026-10-16_candidates_insample_2025-06-01_2026-05-31_risk0.5_TP40_realticks.md
+- 2026-10-16: SPEC 4A-A gains three development variants (owner decision), declared before
+  testing: A1 H4 trend filter, A2 stop at the Asian range midpoint, A3 both. In-sample only,
+  same bar; the best goes to the hold-out once, and no further breakout variants before it.
+  Backtest: pending.
