@@ -104,10 +104,45 @@ ENUM_SIGNAL FirstBreakoutSignal(const MqlRates &bars[], const AsianRange &r,
    return s;
 }
 
-// Opposite side of the range plus the section 7 buffer
-double BreakoutStop(const AsianRange &r, const ENUM_SIGNAL s, const double pip)
+// Section 4A-A development variants, declared before testing (SPEC 2026-10-16)
+enum ENUM_BREAKOUT_VARIANT
 {
-   return s == SIGNAL_LONG ? r.low - STOP_BUFFER_PIPS * pip : r.high + STOP_BUFFER_PIPS * pip;
+   BREAKOUT_BASE,        // A: rules 1-6
+   BREAKOUT_TREND,       // A1: with the H4 trend filter
+   BREAKOUT_MID_STOP,    // A2: stop at the range midpoint
+   BREAKOUT_TREND_MID    // A3: both
+};
+
+string BreakoutVariantText(const ENUM_BREAKOUT_VARIANT v)
+{
+   switch(v)
+   {
+      case BREAKOUT_TREND:     return "breakout-trend";
+      case BREAKOUT_MID_STOP:  return "breakout-mid";
+      case BREAKOUT_TREND_MID: return "breakout-trend-mid";
+      default:                 return "breakout";
+   }
+}
+
+bool UsesTrendFilter(const ENUM_BREAKOUT_VARIANT v) { return v == BREAKOUT_TREND || v == BREAKOUT_TREND_MID; }
+bool UsesMidStop(const ENUM_BREAKOUT_VARIANT v)     { return v == BREAKOUT_MID_STOP || v == BREAKOUT_TREND_MID; }
+
+// A1/A3: the breakout must point the same way as the section 4 H4 trend
+bool BreakoutTrendAllows(const H4Trend &t, const ENUM_SIGNAL s, const ENUM_BREAKOUT_VARIANT v)
+{
+   if(!UsesTrendFilter(v))
+      return true;
+   return (s == SIGNAL_LONG && TrendUp(t)) || (s == SIGNAL_SHORT && TrendDown(t));
+}
+
+// Opposite side of the range (A, A1) or its midpoint (A2, A3), plus the section 7 buffer
+double BreakoutStop(const AsianRange &r, const ENUM_SIGNAL s, const double pip,
+                    const ENUM_BREAKOUT_VARIANT v = BREAKOUT_BASE)
+{
+   double mid = (r.high + r.low) / 2.0;
+   if(s == SIGNAL_LONG)
+      return (UsesMidStop(v) ? mid : r.low) - STOP_BUFFER_PIPS * pip;
+   return (UsesMidStop(v) ? mid : r.high) + STOP_BUFFER_PIPS * pip;
 }
 
 //--- B. Holy Grail ----------------------------------------------------------

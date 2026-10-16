@@ -159,6 +159,44 @@ void TestBreakout()
    CheckNum("short stop: range high plus 3 pips",  BreakoutStop(r, SIGNAL_SHORT, PIP), 1.1018);
 }
 
+void TestBreakoutVariants()
+{
+   MqlRates bars[];
+   AddRangeBars(bars, D'2026.07.15 02:00');   // range 1.0985 - 1.1015, midpoint 1.1000
+   AsianRange r;
+   BuildAsianRange(bars, D'2026.07.15', r);
+
+   CheckNum("A long stop: range low - 3",        BreakoutStop(r, SIGNAL_LONG,  PIP, BREAKOUT_BASE), 1.0982);
+   CheckNum("A1 long stop: range low - 3",       BreakoutStop(r, SIGNAL_LONG,  PIP, BREAKOUT_TREND), 1.0982);
+   CheckNum("A2 long stop: midpoint - 3",        BreakoutStop(r, SIGNAL_LONG,  PIP, BREAKOUT_MID_STOP), 1.0997);
+   CheckNum("A3 long stop: midpoint - 3",        BreakoutStop(r, SIGNAL_LONG,  PIP, BREAKOUT_TREND_MID), 1.0997);
+   CheckNum("A short stop: range high + 3",      BreakoutStop(r, SIGNAL_SHORT, PIP, BREAKOUT_BASE), 1.1018);
+   CheckNum("A2 short stop: midpoint + 3",       BreakoutStop(r, SIGNAL_SHORT, PIP, BREAKOUT_MID_STOP), 1.1003);
+   CheckNum("default variant is A",              BreakoutStop(r, SIGNAL_SHORT, PIP), 1.1018);
+
+   H4Trend up, down, none;
+   up.close = 1.1000;   up.emaFast = 1.0950;   up.emaSlow = 1.0900;
+   down.close = 1.0800; down.emaFast = 1.0850; down.emaSlow = 1.0900;
+   none.close = 1.0899; none.emaFast = 1.0950; none.emaSlow = 1.0900;   // fast above slow, close below
+
+   ENUM_BREAKOUT_VARIANT v[] = {BREAKOUT_BASE, BREAKOUT_TREND, BREAKOUT_MID_STOP, BREAKOUT_TREND_MID};
+   for(int i = 0; i < 4; i++)
+   {
+      bool filtered = (v[i] == BREAKOUT_TREND || v[i] == BREAKOUT_TREND_MID);
+      string name = BreakoutVariantText(v[i]);
+      Check(name + ": long in uptrend allowed",    BreakoutTrendAllows(up, SIGNAL_LONG, v[i]));
+      Check(name + ": short in downtrend allowed", BreakoutTrendAllows(down, SIGNAL_SHORT, v[i]));
+      Check(name + ": short in uptrend " + (filtered ? "blocked" : "allowed"),
+            BreakoutTrendAllows(up, SIGNAL_SHORT, v[i]) != filtered);
+      Check(name + ": long in downtrend " + (filtered ? "blocked" : "allowed"),
+            BreakoutTrendAllows(down, SIGNAL_LONG, v[i]) != filtered);
+      Check(name + ": long with no trend " + (filtered ? "blocked" : "allowed"),
+            BreakoutTrendAllows(none, SIGNAL_LONG, v[i]) != filtered);
+      Check(name + ": short with no trend " + (filtered ? "blocked" : "allowed"),
+            BreakoutTrendAllows(none, SIGNAL_SHORT, v[i]) != filtered);
+   }
+}
+
 void BaseGrailLong(GrailBars &g)
 {
    g.adx1 = 32; g.adx2 = 31; g.plusDi1 = 28; g.minusDi1 = 15;
@@ -202,6 +240,7 @@ void OnStart()
    Out("Candidate tests, run at server time " + TimeToString(TimeTradeServer(), TIME_DATE | TIME_SECONDS));
    TestAsianRange();
    TestBreakout();
+   TestBreakoutVariants();
    TestGrail();
    Out(StringFormat("RESULT: %d passed, %d failed", g_passed, g_failed));
    if(g_file != INVALID_HANDLE)

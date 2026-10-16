@@ -43,6 +43,7 @@ input bool   InpUseNewsFilter  = true;                  // Calendar does not wor
 input group "Testing only"
 input ENUM_ENTRY_MODEL  InpEntryModel  = ENTRY_TREND_PULLBACK; // Entry model (live accounts refuse anything but Trend pullback)
 input ENUM_RULE_VARIANT InpRuleVariant = RULES_SPEC;    // Pullback rule variant (live accounts refuse anything but Spec)
+input ENUM_BREAKOUT_VARIANT InpBreakoutVariant = BREAKOUT_BASE; // London breakout version (with Entry model = London breakout)
 
 input group "EA"
 input long   InpMagic  = 20261002;
@@ -142,10 +143,11 @@ int OnInit()
       initial = AccountInfoDouble(ACCOUNT_BALANCE);
    }
    // Variants are untested alternatives to SPEC section 4; they never trade real orders
-   if(!g_tester && (InpRuleVariant != RULES_SPEC || InpEntryModel != ENTRY_TREND_PULLBACK))
+   if(!g_tester && (InpRuleVariant != RULES_SPEC || InpEntryModel != ENTRY_TREND_PULLBACK ||
+                    InpBreakoutVariant != BREAKOUT_BASE))
    {
-      Print("InpEntryModel and InpRuleVariant are for the Strategy Tester only. ",
-            "Set them to Trend pullback and Spec on a live account.");
+      Print("InpEntryModel, InpRuleVariant and InpBreakoutVariant are for the Strategy Tester only. ",
+            "Set them to their defaults on a live account.");
       return INIT_PARAMETERS_INCORRECT;
    }
    if(InpRiskPercent <= 0.0 || InpTakeProfitPips <= 0)
@@ -174,8 +176,9 @@ int OnInit()
    g_risk.Save();
 
    // Tester runs start empty files; live runs append across restarts
-   string testName = InpEntryModel == ENTRY_TREND_PULLBACK ? RuleVariantText(InpRuleVariant)
-                                                           : EntryModelText(InpEntryModel);
+   string testName = InpEntryModel == ENTRY_TREND_PULLBACK  ? RuleVariantText(InpRuleVariant)
+                   : InpEntryModel == ENTRY_LONDON_BREAKOUT ? BreakoutVariantText(InpBreakoutVariant)
+                                                            : EntryModelText(InpEntryModel);
    string logName = g_tester ? "TrendPullback_tester_" + testName
                              : StringFormat("TrendPullback_%I64d_%I64d", AccountInfoInteger(ACCOUNT_LOGIN), InpMagic);
    if(InpLogTag != "")
@@ -566,7 +569,7 @@ void TryMarketEntry(SymbolContext &c, const ENUM_SIGNAL s, const double stopLeve
 }
 
 // Section 4A-A. Returns false when data isn't ready, so the bar is retried.
-bool CheckBreakout(SymbolContext &c, const datetime barOpen, const datetime now)
+bool CheckBreakout(SymbolContext &c, const H4Trend &t, const datetime barOpen, const datetime now)
 {
    MqlRates bars[];
    if(CopyRates(c.name, PERIOD_H1, 1, BREAKOUT_LOOKBACK_BARS, bars) != BREAKOUT_LOOKBACK_BARS)
@@ -575,8 +578,13 @@ bool CheckBreakout(SymbolContext &c, const datetime barOpen, const datetime now)
    AsianRange r;
    BuildAsianRange(bars, LondonDateOf(bar1.time), r);
    ENUM_SIGNAL s = FirstBreakoutSignal(bars, r, bar1.time, bar1.close);
-   if(s != SIGNAL_NONE)
-      TryMarketEntry(c, s, BreakoutStop(r, s, c.pip), barOpen, now);
+   if(s == SIGNAL_NONE)
+      return true;
+   // A filter skip still uses up the day's breakout (4A-A rule 3)
+   if(!BreakoutTrendAllows(t, s, InpBreakoutVariant))
+      SkipLog(c, s, "breakout against the H4 trend");
+   else
+      TryMarketEntry(c, s, BreakoutStop(r, s, c.pip, InpBreakoutVariant), barOpen, now);
    return true;
 }
 
@@ -618,7 +626,7 @@ void CheckNewBar(SymbolContext &c, const datetime now)
 
    if(InpEntryModel == ENTRY_LONDON_BREAKOUT)
    {
-      if(CheckBreakout(c, barOpen, now))
+      if(CheckBreakout(c, t, barOpen, now))
          c.lastBarTime = barOpen;
       return;
    }
